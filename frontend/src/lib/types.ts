@@ -8,6 +8,8 @@ export type Track = {
   key: string;
   genre: string;
   energy: number;
+  cover_url?: string | null;
+  source_url?: string | null;
 };
 
 export type TrackMatch = {

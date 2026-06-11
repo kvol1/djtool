@@ -1,5 +1,5 @@
-import { Copy, Disc3, Gauge, KeyRound, Loader2, Search, Sparkles, Waves } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Copy, Disc3, Gauge, KeyRound, Loader2, Music2, Search, Sparkles, Waves } from "lucide-react";
+import { useEffect, useState } from "react";
 import { getMatches, getTracks, verifyTelegramSession } from "./lib/api";
 import type { Track, TrackMatch } from "./lib/types";
 import { getInitData, hapticSuccess, hapticTap, initTelegramShell } from "./lib/telegram";
@@ -9,6 +9,7 @@ import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Skeleton } from "./components/ui/skeleton";
 
 const matchLabels = {
   perfect: "Идеальное сочетание",
@@ -40,6 +41,37 @@ function EnergyMeter({ value }: { value: number }) {
   );
 }
 
+function CoverImage({ track }: { track: Track }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(track.cover_url && !failed);
+
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [track.cover_url]);
+
+  return (
+    <div className="relative size-12 shrink-0 overflow-hidden rounded-md">
+      {showImage && !loaded && <Skeleton className="absolute inset-0" />}
+      {showImage ? (
+        <img
+          src={track.cover_url ?? ""}
+          alt={`${track.title} — обложка`}
+          className={cn("h-full w-full object-cover transition-opacity duration-200 ease-out", loaded ? "opacity-100" : "opacity-0")}
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,rgba(52,211,153,.26),rgba(56,189,248,.18),rgba(255,255,255,.06))]">
+          <Music2 className="size-5 text-emerald-100/90" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrackRow({
   track,
   selected,
@@ -54,12 +86,13 @@ function TrackRow({
       type="button"
       onClick={() => onSelect(track)}
       className={cn(
-        "group grid w-full grid-cols-[1fr_auto] gap-3 rounded-md border p-3 text-left transition-[background,border-color,transform] duration-150 ease-out active:scale-[0.995]",
+        "group grid w-full grid-cols-[auto_1fr_auto] gap-3 rounded-md border p-3 text-left transition-[background,border-color,transform] duration-150 ease-out active:scale-[0.995]",
         selected
           ? "border-primary/60 bg-primary/12"
           : "border-white/8 bg-white/[0.035] hover:border-white/18 hover:bg-white/[0.06]",
       )}
     >
+      <CoverImage track={track} />
       <span className="min-w-0">
         <span className="block truncate text-sm font-bold text-foreground">{track.title}</span>
         <span className="mt-1 block truncate text-xs text-muted-foreground">{track.artist}</span>
@@ -95,13 +128,16 @@ function MatchRow({
   return (
     <article className="rounded-md border border-white/10 bg-white/[0.045] p-4 shadow-glow">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={match.type === "perfect" ? "perfect" : "close"}>{matchLabels[match.type]}</Badge>
-            <Badge variant="default">{match.track.genre}</Badge>
+        <div className="flex min-w-0 gap-3">
+          <CoverImage track={match.track} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={match.type === "perfect" ? "perfect" : "close"}>{matchLabels[match.type]}</Badge>
+              <Badge variant="default">{match.track.genre}</Badge>
+            </div>
+            <h3 className="mt-3 truncate text-base font-extrabold text-foreground">{match.track.title}</h3>
+            <p className="mt-1 truncate text-sm text-muted-foreground">{match.track.artist}</p>
           </div>
-          <h3 className="mt-3 truncate text-base font-extrabold text-foreground">{match.track.title}</h3>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{match.track.artist}</p>
         </div>
         <Button size="icon" variant="secondary" onClick={copyMatch} aria-label="Скопировать сочетание">
           <Copy className="size-4" />
@@ -165,42 +201,57 @@ export function App() {
         .catch(() => setSessionState("Проверка Telegram не прошла"));
     }
 
-    getTracks()
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const normalizedQuery = debouncedQuery.trim();
+
+    if (normalizedQuery.length < 2) {
+      setTracks([]);
+      setMatches([]);
+      setSelectedTrack(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setMatches([]);
+    setSelectedTrack(null);
+
+    getTracks(normalizedQuery)
       .then(({ tracks: loadedTracks }) => {
         setTracks(loadedTracks);
         setSelectedTrack(loadedTracks[0] ?? null);
       })
-      .catch((err: Error) => setError(err.message || "Не удалось загрузить треки"))
+      .catch((err: Error) => {
+        setTracks([]);
+        setSelectedTrack(null);
+        setMatches([]);
+        setError(err.message || "Не удалось загрузить треки");
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [debouncedQuery]);
 
   useEffect(() => {
-    if (!selectedTrack) return;
+    if (!selectedTrack || debouncedQuery.trim().length < 2) {
+      setMatches([]);
+      return;
+    }
 
     setMatchesLoading(true);
-    getMatches(selectedTrack.id)
+    getMatches(selectedTrack.id, debouncedQuery.trim())
       .then(({ matches }) => setMatches(matches))
       .catch((err: Error) => setError(err.message || "Не удалось найти сочетания"))
       .finally(() => setMatchesLoading(false));
-  }, [selectedTrack]);
+  }, [selectedTrack, debouncedQuery]);
 
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 1500);
     return () => window.clearTimeout(timer);
   }, [toast]);
-
-  const filteredTracks = useMemo(() => {
-    const normalizedQuery = debouncedQuery.trim().toLowerCase();
-    if (!normalizedQuery) return tracks;
-
-    return tracks.filter((track) =>
-      [track.title, track.artist, track.genre, track.key, String(track.bpm)]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery),
-    );
-  }, [tracks, debouncedQuery]);
 
   const perfectMatches = matches.filter((match) => match.type === "perfect");
   const closeMatches = matches.filter((match) => match.type === "close");
@@ -228,13 +279,16 @@ export function App() {
           </div>
 
           {selectedTrack && (
-            <div className="rounded-md border border-primary/20 bg-primary/10 p-4">
-              <div className="text-xs font-semibold text-primary">Исходный трек</div>
-              <div className="mt-2 max-w-[22rem] truncate text-lg font-extrabold">{selectedTrack.title}</div>
-              <div className="mt-1 truncate text-sm text-muted-foreground">{selectedTrack.artist}</div>
-              <div className="mt-3 flex gap-2">
-                <Badge variant="perfect">{selectedTrack.key}</Badge>
-                <Badge variant="default">{selectedTrack.bpm} BPM</Badge>
+            <div className="flex gap-3 rounded-md border border-primary/20 bg-primary/10 p-4">
+              <CoverImage track={selectedTrack} />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-primary">Исходный трек</div>
+                <div className="mt-2 max-w-[22rem] truncate text-lg font-extrabold">{selectedTrack.title}</div>
+                <div className="mt-1 truncate text-sm text-muted-foreground">{selectedTrack.artist}</div>
+                <div className="mt-3 flex gap-2">
+                  <Badge variant="perfect">{selectedTrack.key}</Badge>
+                  <Badge variant="default">{selectedTrack.bpm} BPM</Badge>
+                </div>
               </div>
             </div>
           )}
@@ -253,7 +307,7 @@ export function App() {
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Введите название трека..."
+                placeholder="Введите название трека или артиста..."
                 className="pl-10"
               />
             </div>
@@ -267,7 +321,7 @@ export function App() {
               )}
 
               {!loading &&
-                filteredTracks.map((track) => (
+                tracks.map((track) => (
                   <TrackRow
                     key={track.id}
                     track={track}
@@ -276,7 +330,13 @@ export function App() {
                   />
                 ))}
 
-              {!loading && filteredTracks.length === 0 && (
+              {!loading && debouncedQuery.trim().length < 2 && (
+                <div className="flex h-40 items-center justify-center rounded-md border border-dashed border-white/12 text-sm font-semibold text-muted-foreground">
+                  Введите минимум 2 символа
+                </div>
+              )}
+
+              {!loading && debouncedQuery.trim().length >= 2 && tracks.length === 0 && (
                 <div className="flex h-40 items-center justify-center rounded-md border border-dashed border-white/12 text-sm font-semibold text-muted-foreground">
                   Треки не найдены
                 </div>

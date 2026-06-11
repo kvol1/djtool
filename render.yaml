@@ -8,6 +8,8 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
+      - key: MUSIC_API_KEY
+        sync: false
       - key: BOT_USERNAME
         value: dj_tool_bot
       - key: BOT_APP_NAME

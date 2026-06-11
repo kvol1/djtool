@@ -19,12 +19,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function getTracks() {
-  return request<{ tracks: Track[] }>("/api/tracks");
+export function getTracks(query: string) {
+  const params = new URLSearchParams({ query });
+  return request<{ tracks: Track[] }>(`/api/tracks?${params.toString()}`);
 }
 
-export function getMatches(trackId: string) {
-  return request<{ sourceTrack: Track; matches: TrackMatch[] }>(`/api/matches/${trackId}`);
+export function getMatches(trackId: string, query: string) {
+  const params = new URLSearchParams({ query });
+  return request<{ sourceTrack: Track; matches: TrackMatch[] }>(`/api/matches/${trackId}?${params.toString()}`);
 }
 
 export function verifyTelegramSession(initData: string) {

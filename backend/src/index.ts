@@ -5,7 +5,7 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { validateTelegramInitData } from "./auth";
 import { findHarmonicMatches } from "./matchingEngine";
-import { mockTracks } from "./mockTracks";
+import { MusicApiError, MusicApiService } from "./MusicApiService";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const PUBLIC_WEBAPP_URL = process.env.PUBLIC_WEBAPP_URL ?? process.env.RENDER_EXTERNAL_URL;
@@ -36,6 +36,7 @@ if (!PUBLIC_WEBAPP_URL) {
 
 const bot = new Bot(BOT_TOKEN);
 const app = new Hono();
+const musicApi = new MusicApiService();
 
 app.use(
   "*",
@@ -51,7 +52,6 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.get("/api/config", (c) =>
   c.json({
     webAppUrl: PUBLIC_WEBAPP_URL,
-    trackCount: mockTracks.length,
   }),
 );
 
@@ -66,10 +66,17 @@ app.post("/api/auth", async (c) => {
   return c.json({ ok: true });
 });
 
-app.get("/api/tracks", (c) => c.json({ tracks: mockTracks }));
+app.get("/api/tracks", async (c) => {
+  const query = c.req.query("query") ?? "";
+  const tracks = await musicApi.searchTracks(query);
 
-app.get("/api/matches/:id", (c) => {
-  const sourceTrack = mockTracks.find((track) => track.id === c.req.param("id"));
+  return c.json({ tracks });
+});
+
+app.get("/api/matches/:id", async (c) => {
+  const query = c.req.query("query") ?? "";
+  const tracks = await musicApi.searchTracks(query);
+  const sourceTrack = tracks.find((track) => track.id === c.req.param("id")) ?? (await musicApi.getTrackById(c.req.param("id")));
 
   if (!sourceTrack) {
     throw new HTTPException(404, { message: "Трек не найден" });
@@ -77,8 +84,21 @@ app.get("/api/matches/:id", (c) => {
 
   return c.json({
     sourceTrack,
-    matches: findHarmonicMatches(sourceTrack, mockTracks),
+    matches: findHarmonicMatches(sourceTrack, tracks),
   });
+});
+
+app.onError((err, c) => {
+  if (err instanceof HTTPException) {
+    return c.json({ message: err.message }, err.status);
+  }
+
+  if (err instanceof MusicApiError) {
+    return c.json({ message: err.message }, err.status as 502);
+  }
+
+  console.error("Ошибка сервера:", err);
+  return c.json({ message: "Внутренняя ошибка сервера" }, 500);
 });
 
 app.get("*", async (c) => {

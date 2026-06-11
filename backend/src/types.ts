@@ -10,6 +10,8 @@ export type Track = {
   key: CamelotKey;
   genre: string;
   energy: number;
+  cover_url?: string | null;
+  source_url?: string | null;
 };
 
 export type MatchType = "perfect" | "close";
