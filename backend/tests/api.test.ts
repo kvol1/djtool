@@ -41,6 +41,8 @@ const trackResponse = {
   ],
 };
 
+const redirectUrl = "https://api.beatport.com/v4/auth/o/post-message/";
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -77,15 +79,51 @@ beforeEach(() => {
       });
 
       const body = new URLSearchParams(init?.body?.toString());
-      expect(body.get("grant_type")).toBe("password");
+      expect(body.get("grant_type")).toBe("authorization_code");
       expect(body.get("client_id")).toBe("PUBLIC_BEATPORT_CLIENT_ID");
-      expect(body.get("username")).toBe("test-user");
-      expect(body.get("password")).toBe("test-password");
+      expect(body.get("code")).toBe("AUTH_CODE");
+      expect(body.get("redirect_uri")).toBe(redirectUrl);
 
       return jsonResponse({
         access_token: "ACCESS_TOKEN",
         expires_in: 3600,
         token_type: "Bearer",
+      });
+    }
+
+    if (url.href === "https://api.beatport.com/v4/auth/login/") {
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toMatchObject({
+        "Content-Type": "application/json",
+      });
+
+      expect(JSON.parse(init?.body?.toString() ?? "{}")).toMatchObject({
+        username: "test-user",
+        password: "test-password",
+      });
+
+      return new Response(JSON.stringify({ username: "test-user" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Set-Cookie": "sessionid=test-session; Path=/; HttpOnly",
+        },
+      });
+    }
+
+    if (url.href.startsWith("https://api.beatport.com/v4/auth/o/authorize/")) {
+      expect(url.searchParams.get("response_type")).toBe("code");
+      expect(url.searchParams.get("client_id")).toBe("PUBLIC_BEATPORT_CLIENT_ID");
+      expect(url.searchParams.get("redirect_uri")).toBe(redirectUrl);
+      expect(init?.headers).toMatchObject({
+        Cookie: "sessionid=test-session",
+      });
+
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: `${redirectUrl}?code=AUTH_CODE`,
+        },
       });
     }
 

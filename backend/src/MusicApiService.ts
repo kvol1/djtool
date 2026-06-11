@@ -3,6 +3,7 @@ import type { CamelotKey, Track } from "./types";
 const BEATPORT_API_BASE_URL = "https://api.beatport.com/v4";
 const BEATPORT_DOCS_URL = `${BEATPORT_API_BASE_URL}/docs/`;
 const TOKEN_URL = `${BEATPORT_API_BASE_URL}/auth/o/token/`;
+const REDIRECT_URL = `${BEATPORT_API_BASE_URL}/auth/o/post-message/`;
 const DEFAULT_LIMIT = 5;
 
 type BeatportTokenResponse = {
@@ -294,7 +295,8 @@ export class MusicApiService {
 
     const tracks = extractTracks(data)
       .map(mapBeatportTrack)
-      .filter((track): track is Track => track !== null);
+      .filter((track): track is Track => track !== null)
+      .slice(0, limit);
 
     this.cache.set(cacheKey, tracks);
     return tracks;
@@ -322,7 +324,8 @@ export class MusicApiService {
     }
 
     const clientId = await this.getPublicClientId();
-    const body = this.buildPasswordGrantBody(clientId);
+    const { authCode } = await this.authorizeWithCredentials(clientId);
+    const body = this.buildAuthorizationCodeBody(clientId, authCode);
 
     const response = await fetch(TOKEN_URL, {
       method: "POST",
@@ -387,12 +390,85 @@ export class MusicApiService {
     throw new MusicApiError("Не удалось найти публичный client_id Beatport", 503);
   }
 
-  private buildPasswordGrantBody(clientId: string) {
+  private async authorizeWithCredentials(clientId: string) {
+    const cookieJar = new Map<string, string>();
+    const loginResponse = await fetch(`${BEATPORT_API_BASE_URL}/auth/login/`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0",
+      },
+      body: JSON.stringify({
+        username: this.username,
+        password: this.password,
+      }),
+    });
+
+    this.storeCookies(cookieJar, loginResponse.headers);
+
+    const loginData = (await loginResponse.json().catch(() => ({}))) as { username?: string; email?: string; detail?: string };
+    if (!loginResponse.ok || !loginData.username) {
+      throw new MusicApiError(loginData.detail ?? "Beatport не принял логин или пароль", loginResponse.status || 401);
+    }
+
+    const authorizeUrl = new URL(`${BEATPORT_API_BASE_URL}/auth/o/authorize/`);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("client_id", clientId);
+    authorizeUrl.searchParams.set("redirect_uri", REDIRECT_URL);
+
+    const authorizeResponse = await fetch(authorizeUrl, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml,application/json",
+        Cookie: this.formatCookieHeader(cookieJar),
+        "User-Agent": "Mozilla/5.0",
+      },
+      redirect: "manual",
+    });
+
+    this.storeCookies(cookieJar, authorizeResponse.headers);
+
+    const location = authorizeResponse.headers.get("location");
+    if (!location) {
+      const body = await authorizeResponse.text().catch(() => "");
+      throw new MusicApiError(`Beatport не вернул код авторизации: ${body.slice(0, 180)}`, authorizeResponse.status || 502);
+    }
+
+    const redirectUrl = new URL(location, BEATPORT_API_BASE_URL);
+    const authCode = redirectUrl.searchParams.get("code");
+
+    if (!authCode) {
+      throw new MusicApiError("Beatport не вернул код авторизации", 502);
+    }
+
+    return { authCode };
+  }
+
+  private storeCookies(cookieJar: Map<string, string>, headers: Headers) {
+    const cookieHeaders =
+      typeof headers.getSetCookie === "function"
+        ? headers.getSetCookie()
+        : (headers.get("set-cookie")?.split(/,(?=[^;,]+=)/g) ?? []);
+
+    for (const cookieHeader of cookieHeaders) {
+      const [cookie] = cookieHeader.split(";");
+      const separatorIndex = cookie.indexOf("=");
+      if (separatorIndex === -1) continue;
+
+      cookieJar.set(cookie.slice(0, separatorIndex), cookie.slice(separatorIndex + 1));
+    }
+  }
+
+  private formatCookieHeader(cookieJar: Map<string, string>) {
+    return [...cookieJar.entries()].map(([key, value]) => `${key}=${value}`).join("; ");
+  }
+
+  private buildAuthorizationCodeBody(clientId: string, authCode: string) {
     return new URLSearchParams({
+      code: authCode,
       client_id: clientId,
-      username: this.username ?? "",
-      password: this.password ?? "",
-      grant_type: "password",
+      redirect_uri: REDIRECT_URL,
+      grant_type: "authorization_code",
     });
   }
 }
