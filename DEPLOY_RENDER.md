@@ -19,11 +19,13 @@
 6. В поле `BOT_TOKEN` вставьте токен бота.
 7. В поле `BEATPORT_CLIENT_ID` вставьте Client ID приложения Beatport.
 8. В поле `BEATPORT_CLIENT_SECRET` вставьте Client Secret приложения Beatport.
-9. Нажмите **Apply**.
-10. Дождитесь статуса **Live**.
-11. Откройте URL сервиса вида `https://harmonic-mashup-tma.onrender.com`.
-12. В BotFather откройте настройки Mini App и укажите этот URL.
-13. Для прямого запуска используйте `https://t.me/dj_tool_bot/djtool`.
+9. В поле `BEATPORT_USERNAME` вставьте логин Beatport.
+10. В поле `BEATPORT_PASSWORD` вставьте пароль Beatport.
+11. Нажмите **Apply**.
+12. Дождитесь статуса **Live**.
+13. Откройте URL сервиса вида `https://harmonic-mashup-tma.onrender.com`.
+14. В BotFather откройте настройки Mini App и укажите этот URL.
+15. Для прямого запуска используйте `https://t.me/dj_tool_bot/djtool`.
 
 ## Важно
 

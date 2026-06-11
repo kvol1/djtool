@@ -258,6 +258,8 @@ function mapBeatportTrack(track: BeatportTrack): Track | null {
 export class MusicApiService {
   private readonly clientId = process.env.BEATPORT_CLIENT_ID;
   private readonly clientSecret = process.env.BEATPORT_CLIENT_SECRET;
+  private readonly username = process.env.BEATPORT_USERNAME;
+  private readonly password = process.env.BEATPORT_PASSWORD;
   private readonly cache = new Map<string, Track[]>();
   private accessToken: string | null = process.env.BEATPORT_ACCESS_TOKEN ?? null;
   private tokenExpiresAt = this.accessToken ? Date.now() + 45 * 60 * 1000 : 0;
@@ -315,11 +317,7 @@ export class MusicApiService {
       throw new MusicApiError("Beatport API не настроен: добавьте BEATPORT_CLIENT_ID и BEATPORT_CLIENT_SECRET", 503);
     }
 
-    const body = new URLSearchParams({
-      client_id: this.clientId,
-      client_secret: this.clientSecret,
-      grant_type: "client_credentials",
-    });
+    const body = this.username && this.password ? this.buildPasswordGrantBody() : this.buildClientCredentialsBody();
 
     const response = await fetch(TOKEN_URL, {
       method: "POST",
@@ -339,5 +337,23 @@ export class MusicApiService {
     this.accessToken = data.access_token;
     this.tokenExpiresAt = Date.now() + Math.max(60, (data.expires_in ?? 3600) - 60) * 1000;
     return this.accessToken;
+  }
+
+  private buildClientCredentialsBody() {
+    return new URLSearchParams({
+      client_id: this.clientId ?? "",
+      client_secret: this.clientSecret ?? "",
+      grant_type: "client_credentials",
+    });
+  }
+
+  private buildPasswordGrantBody() {
+    return new URLSearchParams({
+      client_id: this.clientId ?? "",
+      client_secret: this.clientSecret ?? "",
+      username: this.username ?? "",
+      password: this.password ?? "",
+      grant_type: "password",
+    });
   }
 }

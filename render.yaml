@@ -12,6 +12,10 @@ services:
         sync: false
       - key: BEATPORT_CLIENT_SECRET
         sync: false
+      - key: BEATPORT_USERNAME
+        sync: false
+      - key: BEATPORT_PASSWORD
+        sync: false
       - key: BOT_USERNAME
         value: dj_tool_bot
       - key: BOT_APP_NAME
