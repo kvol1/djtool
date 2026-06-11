@@ -17,12 +17,11 @@
 4. Подключите GitHub-репозиторий с этим проектом.
 5. Render найдет `render.yaml` и покажет сервис `harmonic-mashup-tma`.
 6. В поле `BOT_TOKEN` вставьте токен бота.
-7. В поле `MUSIC_API_KEY` вставьте ключ GetSongBPM.
-8. Нажмите **Apply**.
-9. Дождитесь статуса **Live**.
-10. Откройте URL сервиса вида `https://harmonic-mashup-tma.onrender.com`.
-11. В BotFather откройте настройки Mini App и укажите этот URL.
-12. Для прямого запуска используйте `https://t.me/dj_tool_bot/djtool`.
+7. Нажмите **Apply**.
+8. Дождитесь статуса **Live**.
+9. Откройте URL сервиса вида `https://harmonic-mashup-tma.onrender.com`.
+10. В BotFather откройте настройки Mini App и укажите этот URL.
+11. Для прямого запуска используйте `https://t.me/dj_tool_bot/djtool`.
 
 ## Важно
 
