@@ -14,6 +14,9 @@ const BACKEND_PORT = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 8787
 const STATIC_ROOT = new URL("../../frontend/dist/", import.meta.url);
 const WEBHOOK_PATH = "/api/telegram/webhook";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const DEFAULT_SEARCH_LIMIT = 30;
+const MATCH_CANDIDATE_LIMIT = 100;
+const MAX_SEARCH_LIMIT = 100;
 
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -40,6 +43,12 @@ const bot = new Bot(BOT_TOKEN);
 const app = new Hono();
 const musicApi = new MusicApiService();
 const webhookUrl = new URL(WEBHOOK_PATH, PUBLIC_WEBAPP_URL).toString();
+
+function getSearchLimit(value: string | undefined, fallback = DEFAULT_SEARCH_LIMIT) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit) || limit <= 0) return fallback;
+  return Math.min(Math.round(limit), MAX_SEARCH_LIMIT);
+}
 
 app.use(
   "*",
@@ -73,14 +82,14 @@ app.post(WEBHOOK_PATH, webhookCallback(bot, "hono"));
 
 app.get("/api/tracks", async (c) => {
   const query = c.req.query("query") ?? "";
-  const tracks = await musicApi.searchTracks(query);
+  const tracks = await musicApi.searchTracks(query, getSearchLimit(c.req.query("limit")));
 
   return c.json({ tracks });
 });
 
 app.get("/api/matches/:id", async (c) => {
   const query = c.req.query("query") ?? "";
-  const tracks = await musicApi.searchTracks(query, 50);
+  const tracks = await musicApi.searchTracks(query, getSearchLimit(c.req.query("limit"), MATCH_CANDIDATE_LIMIT));
   const sourceTrack = tracks.find((track) => track.id === c.req.param("id")) ?? (await musicApi.getTrackById(c.req.param("id")));
 
   if (!sourceTrack) {

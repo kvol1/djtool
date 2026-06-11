@@ -4,7 +4,7 @@ const BEATPORT_API_BASE_URL = "https://api.beatport.com/v4";
 const BEATPORT_DOCS_URL = `${BEATPORT_API_BASE_URL}/docs/`;
 const TOKEN_URL = `${BEATPORT_API_BASE_URL}/auth/o/token/`;
 const REDIRECT_URL = `${BEATPORT_API_BASE_URL}/auth/o/post-message/`;
-const DEFAULT_LIMIT = 5;
+const DEFAULT_LIMIT = 30;
 
 type BeatportTokenResponse = {
   access_token?: string;
@@ -240,6 +240,27 @@ function extractTracks(response: BeatportSearchResponse) {
   return [];
 }
 
+function normalizeSearchText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, " ").trim();
+}
+
+function scoreTrack(track: Track, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  const artistParts = track.artist.split(",").map((artist) => normalizeSearchText(artist));
+  const artistText = normalizeSearchText(track.artist);
+  const titleText = normalizeSearchText(track.title);
+
+  if (artistParts.some((artist) => artist === normalizedQuery)) return 400;
+  if (artistText.includes(normalizedQuery)) return 250;
+  if (titleText === normalizedQuery) return 150;
+  if (titleText.includes(normalizedQuery)) return 75;
+  return 0;
+}
+
+function getTrackSignature(track: Track) {
+  return `${normalizeSearchText(track.artist)}::${normalizeSearchText(track.title)}::${track.bpm}`;
+}
+
 function mapBeatportTrack(track: BeatportTrack): Track | null {
   const id = getString(track.id);
   const title = getString(track.name) ?? getString(track.title);
@@ -278,11 +299,42 @@ export class MusicApiService {
     const cachedTracks = this.cache.get(cacheKey);
     if (cachedTracks) return cachedTracks;
 
+    const primaryTracks = await this.searchBeatportCatalog({
+      q: normalizedQuery,
+      per_page: String(limit),
+    });
+    const artistTracks = await this.searchBeatportCatalog({
+      q: normalizedQuery,
+      artist_name: normalizedQuery,
+      per_page: String(limit),
+    });
+    const uniqueTracks = new Map<string, Track>();
+    const seenSignatures = new Set<string>();
+
+    for (const track of [...artistTracks, ...primaryTracks]) {
+      const signature = getTrackSignature(track);
+      if (uniqueTracks.has(track.id) || seenSignatures.has(signature)) continue;
+
+      uniqueTracks.set(track.id, track);
+      seenSignatures.add(signature);
+    }
+
+    const tracks = [...uniqueTracks.values()]
+      .sort((a, b) => scoreTrack(b, normalizedQuery) - scoreTrack(a, normalizedQuery))
+      .slice(0, limit);
+
+    this.cache.set(cacheKey, tracks);
+    return tracks;
+  }
+
+  private async searchBeatportCatalog(params: Record<string, string>) {
     const token = await this.getAccessToken();
     const url = new URL(`${BEATPORT_API_BASE_URL}/catalog/search/`);
-    url.searchParams.set("q", normalizedQuery);
     url.searchParams.set("type", "tracks");
-    url.searchParams.set("per_page", String(limit));
+
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
 
     const response = await fetch(url, {
       headers: {
@@ -297,13 +349,10 @@ export class MusicApiService {
       throw new MusicApiError(data.detail ?? "Beatport API временно недоступен", response.status || 502);
     }
 
-    const tracks = extractTracks(data)
+    return extractTracks(data)
       .map(mapBeatportTrack)
       .filter((track): track is Track => track !== null)
-      .slice(0, limit);
-
-    this.cache.set(cacheKey, tracks);
-    return tracks;
+      .slice(0, Number(params.per_page ?? DEFAULT_LIMIT));
   }
 
   async getTrackById(id: string): Promise<Track | null> {

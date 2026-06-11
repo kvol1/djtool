@@ -44,6 +44,48 @@ const trackResponse = {
   ],
 };
 
+const notionPrimaryResponse = {
+  tracks: [
+    {
+      id: 201,
+      name: "Notion",
+      artists: [{ name: "TiM TASTE" }],
+      bpm: 128,
+      key: { name: "F Major" },
+      genre: { name: "Techno" },
+    },
+    {
+      id: 202,
+      name: "The Days",
+      artists: [{ name: "NOTION" }, { name: "Chrystal" }],
+      bpm: 138,
+      key: { name: "B Minor" },
+      genre: { name: "Dance" },
+    },
+  ],
+};
+
+const notionArtistResponse = {
+  tracks: [
+    {
+      id: 203,
+      name: "Hooked",
+      artists: [{ name: "NOTION" }],
+      bpm: 128,
+      key: { name: "C# Minor" },
+      genre: { name: "Bass House" },
+    },
+    {
+      id: 204,
+      name: "TV DREAMS",
+      artists: [{ name: "NOTION" }],
+      bpm: 134,
+      key: { name: "Bb Minor" },
+      genre: { name: "Garage" },
+    },
+  ],
+};
+
 const redirectUrl = "https://api.beatport.com/v4/auth/o/post-message/";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -131,12 +173,24 @@ beforeEach(() => {
     }
 
     if (url.href.startsWith("https://api.beatport.com/v4/catalog/search/")) {
-      expect(url.searchParams.get("q")).toBe("Fisher");
+      const query = url.searchParams.get("q");
       expect(url.searchParams.get("type")).toBe("tracks");
-      expect(url.searchParams.get("per_page")).toBe("5");
+      expect(url.searchParams.get("per_page")).toBe("30");
       expect(init?.headers).toMatchObject({
         Authorization: "Bearer ACCESS_TOKEN",
       });
+
+      if (query === "Fisher") {
+        return jsonResponse(trackResponse);
+      }
+
+      if (query === "Notion" && url.searchParams.get("artist_name") === "Notion") {
+        return jsonResponse(notionArtistResponse);
+      }
+
+      if (query === "Notion") {
+        return jsonResponse(notionPrimaryResponse);
+      }
 
       return jsonResponse(trackResponse);
     }
@@ -153,7 +207,7 @@ afterEach(() => {
 describe("MusicApiService", () => {
   test("searches Beatport and returns normalized track objects", async () => {
     const musicApi = new MusicApiService();
-    const tracks = await musicApi.searchTracks("Fisher", 5);
+    const tracks = await musicApi.searchTracks("Fisher");
 
     expect(tracks.length).toBe(2);
     expect(tracks[0]).toMatchObject({
@@ -168,6 +222,19 @@ describe("MusicApiService", () => {
       artist: "FISHER",
       bpm: 125,
       key: "3B",
+    });
+  });
+
+  test("combines broad and artist-focused search results", async () => {
+    const musicApi = new MusicApiService();
+    const tracks = await musicApi.searchTracks("Notion");
+
+    expect(tracks.length).toBe(4);
+    expect(tracks.slice(0, 3).every((track) => track.artist.includes("NOTION"))).toBe(true);
+    expect(tracks[0]).toMatchObject({
+      title: "Hooked",
+      artist: "NOTION",
+      key: "12A",
     });
   });
 });

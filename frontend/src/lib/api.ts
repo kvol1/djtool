@@ -67,13 +67,13 @@ async function request<T>(path: string, init?: RequestInit, options: { alertOnEr
   }
 }
 
-export function getTracks(query: string) {
-  const params = new URLSearchParams({ query });
+export function getTracks(query: string, limit = 30) {
+  const params = new URLSearchParams({ query, limit: String(limit) });
   return request<{ tracks: Track[] }>(`/api/tracks?${params.toString()}`, undefined, { alertOnError: true });
 }
 
-export function getMatches(trackId: string, query: string) {
-  const params = new URLSearchParams({ query });
+export function getMatches(trackId: string, query: string, limit = 100) {
+  const params = new URLSearchParams({ query, limit: String(limit) });
   return request<{ sourceTrack: Track; matches: TrackMatch[] }>(`/api/matches/${trackId}?${params.toString()}`, undefined, {
     alertOnError: true,
   });
