@@ -17,11 +17,13 @@
 4. Подключите GitHub-репозиторий с этим проектом.
 5. Render найдет `render.yaml` и покажет сервис `harmonic-mashup-tma`.
 6. В поле `BOT_TOKEN` вставьте токен бота.
-7. Нажмите **Apply**.
-8. Дождитесь статуса **Live**.
-9. Откройте URL сервиса вида `https://harmonic-mashup-tma.onrender.com`.
-10. В BotFather откройте настройки Mini App и укажите этот URL.
-11. Для прямого запуска используйте `https://t.me/dj_tool_bot/djtool`.
+7. В поле `BEATPORT_CLIENT_ID` вставьте Client ID приложения Beatport.
+8. В поле `BEATPORT_CLIENT_SECRET` вставьте Client Secret приложения Beatport.
+9. Нажмите **Apply**.
+10. Дождитесь статуса **Live**.
+11. Откройте URL сервиса вида `https://harmonic-mashup-tma.onrender.com`.
+12. В BotFather откройте настройки Mini App и укажите этот URL.
+13. Для прямого запуска используйте `https://t.me/dj_tool_bot/djtool`.
 
 ## Важно
 

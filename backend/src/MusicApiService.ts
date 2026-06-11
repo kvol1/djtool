@@ -1,28 +1,67 @@
 import type { CamelotKey, Track } from "./types";
 
-const BEATPORT_SEARCH_URL = "https://www.beatport.com/search";
+const BEATPORT_API_BASE_URL = "https://api.beatport.com/v4";
+const TOKEN_URL = `${BEATPORT_API_BASE_URL}/auth/o/token/`;
 const DEFAULT_LIMIT = 10;
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type BeatportTokenResponse = {
+  access_token?: string;
+  expires_in?: number;
+  token_type?: string;
+  scope?: string;
+};
 
-type BeatportCandidate = {
-  id?: string;
+type BeatportImage = {
+  id?: number | string;
+  uri?: string;
+  url?: string;
+};
+
+type BeatportNameObject = {
+  id?: number | string;
+  name?: string;
   slug?: string;
+};
+
+type BeatportKey = {
+  name?: string;
+  short_name?: string;
+  shortName?: string;
+  camelot_number?: number | string;
+  camelotNumber?: number | string;
+  camelot_letter?: string;
+  camelotLetter?: string;
+};
+
+type BeatportTrack = {
+  id?: number | string;
   name?: string;
   title?: string;
-  bpm?: string | number;
-  key?: string | { name?: string; shortName?: string; camelotNumber?: string; camelotLetter?: string };
-  artists?: Array<{ name?: string }>;
-  artist?: string | { name?: string };
-  genre?: string | { name?: string };
-  image?: string | { uri?: string };
-  artwork?: string | { uri?: string };
+  bpm?: number | string;
+  key?: string | BeatportKey;
+  artists?: BeatportNameObject[];
+  artist?: string | BeatportNameObject;
+  genre?: string | BeatportNameObject;
+  genres?: BeatportNameObject[];
+  image?: string | BeatportImage;
+  images?: BeatportImage[];
+  artwork?: string | BeatportImage;
   release?: {
-    image?: string | { uri?: string };
-    artwork?: string | { uri?: string };
+    name?: string;
+    image?: string | BeatportImage;
+    images?: BeatportImage[];
+    artwork?: string | BeatportImage;
   };
   url?: string;
   href?: string;
+  slug?: string;
+};
+
+type BeatportSearchResponse = {
+  results?: BeatportTrack[] | Record<string, BeatportTrack[]>;
+  tracks?: BeatportTrack[];
+  data?: BeatportTrack[];
+  detail?: string;
 };
 
 export class MusicApiError extends Error {
@@ -126,165 +165,102 @@ function absoluteBeatportUrl(value: string | undefined) {
   return value;
 }
 
-function pickImage(candidate: BeatportCandidate) {
-  const possibleValues = [
-    candidate.image,
-    candidate.artwork,
-    candidate.release?.image,
-    candidate.release?.artwork,
-  ];
-
-  for (const value of possibleValues) {
-    if (typeof value === "string") return absoluteBeatportUrl(value);
-    if (value && typeof value === "object" && "uri" in value) {
-      return absoluteBeatportUrl(getString(value.uri));
-    }
+function pickImageValue(value: unknown) {
+  if (typeof value === "string") return absoluteBeatportUrl(value);
+  if (value && typeof value === "object") {
+    const image = value as BeatportImage;
+    return absoluteBeatportUrl(getString(image.uri) ?? getString(image.url));
   }
 
   return null;
 }
 
-function pickArtist(candidate: BeatportCandidate) {
-  if (Array.isArray(candidate.artists)) {
-    const names = candidate.artists.map((artist) => artist.name).filter(Boolean);
+function pickImage(track: BeatportTrack) {
+  const images = [
+    track.image,
+    track.artwork,
+    track.images?.[0],
+    track.release?.image,
+    track.release?.artwork,
+    track.release?.images?.[0],
+  ];
+
+  for (const image of images) {
+    const url = pickImageValue(image);
+    if (url) return url;
+  }
+
+  return null;
+}
+
+function pickArtist(track: BeatportTrack) {
+  if (Array.isArray(track.artists)) {
+    const names = track.artists.map((artist) => artist.name).filter(Boolean);
     if (names.length > 0) return names.join(", ");
   }
 
-  if (typeof candidate.artist === "string") return candidate.artist;
-  if (candidate.artist && typeof candidate.artist === "object") return candidate.artist.name;
+  if (typeof track.artist === "string") return track.artist;
+  if (track.artist && typeof track.artist === "object") return track.artist.name;
   return undefined;
 }
 
-function pickGenre(candidate: BeatportCandidate) {
-  if (typeof candidate.genre === "string") return candidate.genre;
-  if (candidate.genre && typeof candidate.genre === "object") return candidate.genre.name;
+function pickGenre(track: BeatportTrack) {
+  if (Array.isArray(track.genres) && track.genres[0]?.name) return track.genres[0].name;
+  if (typeof track.genre === "string") return track.genre;
+  if (track.genre && typeof track.genre === "object") return track.genre.name;
   return "Электронная музыка";
 }
 
-function pickKey(candidate: BeatportCandidate) {
-  if (typeof candidate.key === "string") return candidate.key;
+function pickKey(track: BeatportTrack) {
+  if (typeof track.key === "string") return track.key;
 
-  if (candidate.key && typeof candidate.key === "object") {
-    const camelotNumber = getString(candidate.key.camelotNumber);
-    const camelotLetter = getString(candidate.key.camelotLetter);
+  if (track.key && typeof track.key === "object") {
+    const camelotNumber = getString(track.key.camelot_number) ?? getString(track.key.camelotNumber);
+    const camelotLetter = getString(track.key.camelot_letter) ?? getString(track.key.camelotLetter);
     if (camelotNumber && camelotLetter) return `${camelotNumber}${camelotLetter}`;
 
-    return candidate.key.name ?? candidate.key.shortName;
+    return track.key.name ?? track.key.short_name ?? track.key.shortName;
   }
 
   return undefined;
 }
 
-function mapCandidateToTrack(candidate: BeatportCandidate, index: number): Track | null {
-  const title = getString(candidate.title) ?? getString(candidate.name);
-  const artist = pickArtist(candidate);
-  const bpm = getNumber(candidate.bpm);
-  const key = toCamelotKey(pickKey(candidate));
+function extractTracks(response: BeatportSearchResponse) {
+  if (Array.isArray(response.results)) return response.results;
+  if (response.results && Array.isArray(response.results.tracks)) return response.results.tracks;
+  if (Array.isArray(response.tracks)) return response.tracks;
+  if (Array.isArray(response.data)) return response.data;
+  return [];
+}
 
-  if (!title || !artist || !bpm || !key) return null;
+function mapBeatportTrack(track: BeatportTrack): Track | null {
+  const id = getString(track.id);
+  const title = getString(track.name) ?? getString(track.title);
+  const artist = pickArtist(track);
+  const bpm = getNumber(track.bpm);
+  const key = toCamelotKey(pickKey(track));
 
-  const url = absoluteBeatportUrl(getString(candidate.url) ?? getString(candidate.href));
-  const id = getString(candidate.id) ?? getString(candidate.slug) ?? `${artist}-${title}-${index}`;
+  if (!id || !title || !artist || !bpm || !key) return null;
 
   return {
-    id: encodeURIComponent(id),
+    id,
     title,
     artist,
     bpm,
     key,
-    genre: pickGenre(candidate),
+    genre: pickGenre(track),
     energy: Math.max(1, Math.min(10, Math.round(bpm / 14))),
-    cover_url: pickImage(candidate),
-    source_url: url,
+    cover_url: pickImage(track),
+    source_url: absoluteBeatportUrl(getString(track.url) ?? getString(track.href) ?? (track.slug ? `/track/${track.slug}/${id}` : undefined)),
   };
 }
 
-function extractNextData(html: string): JsonValue | null {
-  const match = /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i.exec(html);
-  if (!match) return null;
-
-  try {
-    return JSON.parse(match[1]) as JsonValue;
-  } catch {
-    return null;
-  }
-}
-
-function findTrackCandidates(value: JsonValue, candidates: BeatportCandidate[] = []): BeatportCandidate[] {
-  if (!value || typeof value !== "object") return candidates;
-
-  if (Array.isArray(value)) {
-    for (const item of value) findTrackCandidates(item, candidates);
-    return candidates;
-  }
-
-  const object = value as Record<string, JsonValue>;
-  const maybeTrack = object as BeatportCandidate;
-
-  if (
-    (typeof maybeTrack.name === "string" || typeof maybeTrack.title === "string") &&
-    maybeTrack.bpm !== undefined &&
-    maybeTrack.key !== undefined
-  ) {
-    candidates.push(maybeTrack);
-  }
-
-  for (const child of Object.values(object)) {
-    findTrackCandidates(child, candidates);
-  }
-
-  return candidates;
-}
-
-function decodeHtml(value: string) {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
-}
-
-function extractJsonLdCandidates(html: string): BeatportCandidate[] {
-  const scripts = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) ?? [];
-
-  return scripts.flatMap((script) => {
-    const content = /<script[^>]*>([\s\S]*?)<\/script>/i.exec(script)?.[1];
-    if (!content) return [];
-
-    try {
-      return findTrackCandidates(JSON.parse(decodeHtml(content)) as JsonValue);
-    } catch {
-      return [];
-    }
-  });
-}
-
-function parseBeatportTracks(html: string, limit: number): Track[] {
-  const nextData = extractNextData(html);
-  const candidates = [...(nextData ? findTrackCandidates(nextData) : []), ...extractJsonLdCandidates(html)];
-  const seen = new Set<string>();
-  const tracks: Track[] = [];
-
-  for (const candidate of candidates) {
-    const track = mapCandidateToTrack(candidate, tracks.length);
-    if (!track || seen.has(track.id)) continue;
-
-    seen.add(track.id);
-    tracks.push(track);
-    if (tracks.length >= limit) break;
-  }
-
-  return tracks;
-}
-
-function isChallengePage(html: string) {
-  return /Just a moment|Enable JavaScript and cookies|cf_chl|challenge-platform/i.test(html);
-}
-
 export class MusicApiService {
+  private readonly clientId = process.env.BEATPORT_CLIENT_ID;
+  private readonly clientSecret = process.env.BEATPORT_CLIENT_SECRET;
   private readonly cache = new Map<string, Track[]>();
+  private accessToken: string | null = process.env.BEATPORT_ACCESS_TOKEN ?? null;
+  private tokenExpiresAt = this.accessToken ? Date.now() + 45 * 60 * 1000 : 0;
 
   async searchTracks(query: string, limit = DEFAULT_LIMIT): Promise<Track[]> {
     const normalizedQuery = query.trim();
@@ -294,30 +270,29 @@ export class MusicApiService {
     const cachedTracks = this.cache.get(cacheKey);
     if (cachedTracks) return cachedTracks;
 
-    const url = new URL(BEATPORT_SEARCH_URL);
+    const token = await this.getAccessToken();
+    const url = new URL(`${BEATPORT_API_BASE_URL}/catalog/search/`);
     url.searchParams.set("q", normalizedQuery);
+    url.searchParams.set("type", "tracks");
+    url.searchParams.set("per_page", String(limit));
 
     const response = await fetch(url, {
       headers: {
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ru,en-US;q=0.9,en;q=0.8",
-        "Cache-Control": "no-cache",
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
       },
     });
 
-    const html = await response.text();
+    const data = (await response.json().catch(() => ({}))) as BeatportSearchResponse;
 
     if (!response.ok) {
-      throw new MusicApiError("Beatport временно недоступен", response.status || 502);
+      throw new MusicApiError(data.detail ?? "Beatport API временно недоступен", response.status || 502);
     }
 
-    if (isChallengePage(html)) {
-      throw new MusicApiError("Beatport запросил проверку браузера. Повторите попытку позже", 503);
-    }
+    const tracks = extractTracks(data)
+      .map(mapBeatportTrack)
+      .filter((track): track is Track => track !== null);
 
-    const tracks = parseBeatportTracks(html, limit);
     this.cache.set(cacheKey, tracks);
     return tracks;
   }
@@ -329,5 +304,40 @@ export class MusicApiService {
     }
 
     return null;
+  }
+
+  private async getAccessToken() {
+    if (this.accessToken && Date.now() < this.tokenExpiresAt) {
+      return this.accessToken;
+    }
+
+    if (!this.clientId || !this.clientSecret) {
+      throw new MusicApiError("Beatport API не настроен: добавьте BEATPORT_CLIENT_ID и BEATPORT_CLIENT_SECRET", 503);
+    }
+
+    const body = new URLSearchParams({
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+      grant_type: "client_credentials",
+    });
+
+    const response = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+
+    const data = (await response.json().catch(() => ({}))) as BeatportTokenResponse & { error?: string; error_description?: string };
+
+    if (!response.ok || !data.access_token) {
+      throw new MusicApiError(data.error_description ?? data.error ?? "Не удалось получить токен Beatport API", response.status || 502);
+    }
+
+    this.accessToken = data.access_token;
+    this.tokenExpiresAt = Date.now() + Math.max(60, (data.expires_in ?? 3600) - 60) * 1000;
+    return this.accessToken;
   }
 }

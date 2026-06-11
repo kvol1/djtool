@@ -8,6 +8,10 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
+      - key: BEATPORT_CLIENT_ID
+        sync: false
+      - key: BEATPORT_CLIENT_SECRET
+        sync: false
       - key: BOT_USERNAME
         value: dj_tool_bot
       - key: BOT_APP_NAME
