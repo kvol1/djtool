@@ -1,8 +1,9 @@
 import type { CamelotKey, Track } from "./types";
 
 const BEATPORT_API_BASE_URL = "https://api.beatport.com/v4";
+const BEATPORT_DOCS_URL = `${BEATPORT_API_BASE_URL}/docs/`;
 const TOKEN_URL = `${BEATPORT_API_BASE_URL}/auth/o/token/`;
-const DEFAULT_LIMIT = 10;
+const DEFAULT_LIMIT = 5;
 
 type BeatportTokenResponse = {
   access_token?: string;
@@ -61,6 +62,7 @@ type BeatportSearchResponse = {
   results?: BeatportTrack[] | Record<string, BeatportTrack[]>;
   tracks?: BeatportTrack[];
   data?: BeatportTrack[];
+  items?: BeatportTrack[];
   detail?: string;
 };
 
@@ -230,6 +232,7 @@ function extractTracks(response: BeatportSearchResponse) {
   if (response.results && Array.isArray(response.results.tracks)) return response.results.tracks;
   if (Array.isArray(response.tracks)) return response.tracks;
   if (Array.isArray(response.data)) return response.data;
+  if (Array.isArray(response.items)) return response.items;
   return [];
 }
 
@@ -256,11 +259,10 @@ function mapBeatportTrack(track: BeatportTrack): Track | null {
 }
 
 export class MusicApiService {
-  private readonly clientId = process.env.BEATPORT_CLIENT_ID;
-  private readonly clientSecret = process.env.BEATPORT_CLIENT_SECRET;
   private readonly username = process.env.BEATPORT_USERNAME;
   private readonly password = process.env.BEATPORT_PASSWORD;
   private readonly cache = new Map<string, Track[]>();
+  private publicClientId: string | null = null;
   private accessToken: string | null = process.env.BEATPORT_ACCESS_TOKEN ?? null;
   private tokenExpiresAt = this.accessToken ? Date.now() + 45 * 60 * 1000 : 0;
 
@@ -273,10 +275,9 @@ export class MusicApiService {
     if (cachedTracks) return cachedTracks;
 
     const token = await this.getAccessToken();
-    const url = new URL(`${BEATPORT_API_BASE_URL}/catalog/search/`);
-    url.searchParams.set("q", normalizedQuery);
-    url.searchParams.set("type", "tracks");
-    url.searchParams.set("per_page", String(limit));
+    const url = new URL(`${BEATPORT_API_BASE_URL}/catalog/tracks/`);
+    url.searchParams.set("search", normalizedQuery);
+    url.searchParams.set("page_size", String(limit));
 
     const response = await fetch(url, {
       headers: {
@@ -313,14 +314,15 @@ export class MusicApiService {
       return this.accessToken;
     }
 
-    if (!this.clientId || !this.clientSecret || !this.username || !this.password) {
+    if (!this.username || !this.password) {
       throw new MusicApiError(
-        "Beatport API не настроен: добавьте BEATPORT_CLIENT_ID, BEATPORT_CLIENT_SECRET, BEATPORT_USERNAME и BEATPORT_PASSWORD",
+        "Beatport API не настроен: добавьте BEATPORT_USERNAME и BEATPORT_PASSWORD",
         503,
       );
     }
 
-    const body = this.buildPasswordGrantBody();
+    const clientId = await this.getPublicClientId();
+    const body = this.buildPasswordGrantBody(clientId);
 
     const response = await fetch(TOKEN_URL, {
       method: "POST",
@@ -342,10 +344,52 @@ export class MusicApiService {
     return this.accessToken;
   }
 
-  private buildPasswordGrantBody() {
+  private async getPublicClientId() {
+    if (this.publicClientId) return this.publicClientId;
+
+    const docsResponse = await fetch(BEATPORT_DOCS_URL, {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+
+    if (!docsResponse.ok) {
+      throw new MusicApiError("Не удалось загрузить настройки Beatport API", docsResponse.status || 502);
+    }
+
+    const html = await docsResponse.text();
+    const scriptPaths = [...html.matchAll(/<script[^>]+src=["']([^"']+\.js)["'][^>]*>/gi)].map((match) => match[1]);
+
+    for (const scriptPath of scriptPaths) {
+      const scriptUrl = new URL(scriptPath, BEATPORT_DOCS_URL);
+      const scriptResponse = await fetch(scriptUrl, {
+        headers: {
+          Accept: "application/javascript,text/javascript,*/*",
+          "User-Agent": "Mozilla/5.0",
+        },
+      });
+
+      if (!scriptResponse.ok) continue;
+
+      const script = await scriptResponse.text();
+      const clientId =
+        /API_CLIENT_ID\s*:\s*["']([^"']+)["']/.exec(script)?.[1] ??
+        /clientId\s*:\s*["']([^"']+)["']/.exec(script)?.[1] ??
+        /client_id["']?\s*[:=]\s*["']([A-Za-z0-9_-]{20,})["']/.exec(script)?.[1];
+
+      if (clientId) {
+        this.publicClientId = clientId;
+        return clientId;
+      }
+    }
+
+    throw new MusicApiError("Не удалось найти публичный client_id Beatport", 503);
+  }
+
+  private buildPasswordGrantBody(clientId: string) {
     return new URLSearchParams({
-      client_id: this.clientId ?? "",
-      client_secret: this.clientSecret ?? "",
+      client_id: clientId,
       username: this.username ?? "",
       password: this.password ?? "",
       grant_type: "password",

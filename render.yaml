@@ -8,10 +8,6 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: BEATPORT_CLIENT_ID
-        sync: false
-      - key: BEATPORT_CLIENT_SECRET
-        sync: false
       - key: BEATPORT_USERNAME
         sync: false
       - key: BEATPORT_PASSWORD
