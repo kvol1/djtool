@@ -316,6 +316,18 @@ export function App() {
             </Tabs>
           </section>
         </div>
+
+        <footer className="rounded-md border border-white/10 bg-white/[0.035] px-4 py-3 text-center text-sm font-semibold text-muted-foreground">
+          База данных треков:{" "}
+          <a
+            href="https://getsongbpm.com"
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary underline underline-offset-4 transition-colors hover:text-emerald-200"
+          >
+            GetSongBPM
+          </a>
+        </footer>
       </section>
 
       {toast && (
