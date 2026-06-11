@@ -209,7 +209,7 @@ function pickArtist(track: BeatportTrack) {
 function pickGenre(track: BeatportTrack) {
   if (Array.isArray(track.genres) && track.genres[0]?.name) return track.genres[0].name;
   if (typeof track.genre === "string") return track.genre;
-  if (track.genre && typeof track.genre === "object") return track.genre.name;
+  if (track.genre && typeof track.genre === "object" && track.genre.name) return track.genre.name;
   return "Электронная музыка";
 }
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun run dev.ts",
     "start": "bun backend/src/index.ts",
+    "test:api": "bun test backend/tests/api.test.ts",
     "check": "bun run --cwd backend check && bun run --cwd frontend check",
     "build": "bun run --cwd frontend build"
   },
