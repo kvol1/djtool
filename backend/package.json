@@ -1,0 +1,12 @@
+{
+  "name": "@harmonic-mashup/backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

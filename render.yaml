@@ -1,0 +1,16 @@
+services:
+  - type: web
+    runtime: docker
+    name: harmonic-mashup-tma
+    plan: free
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        value: dj_tool_bot
+      - key: BOT_APP_NAME
+        value: djtool
+      - key: NODE_ENV
+        value: production

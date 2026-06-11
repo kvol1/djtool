@@ -1,0 +1,13 @@
+{
+  "name": "@harmonic-mashup/frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
