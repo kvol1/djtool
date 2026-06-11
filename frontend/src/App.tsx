@@ -1,4 +1,4 @@
-import { Copy, Disc3, Gauge, KeyRound, Loader2, Music2, Search, Sparkles, Waves } from "lucide-react";
+import { Copy, Gauge, KeyRound, Loader2, Music2, Search, Sparkles, Waves } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getMatches, getTracks, verifyTelegramSession } from "./lib/api";
 import type { Track, TrackMatch } from "./lib/types";
@@ -16,13 +16,45 @@ const matchLabels = {
   close: "Другие сочетания",
 } satisfies Record<TrackMatch["type"], string>;
 
+const classicKeysByCamelot: Record<string, string> = {
+  "1A": "Abm",
+  "1B": "B",
+  "2A": "Ebm",
+  "2B": "F#",
+  "3A": "Bbm",
+  "3B": "C#",
+  "4A": "Fm",
+  "4B": "Ab",
+  "5A": "Cm",
+  "5B": "Eb",
+  "6A": "Gm",
+  "6B": "Bb",
+  "7A": "Dm",
+  "7B": "F",
+  "8A": "Am",
+  "8B": "C",
+  "9A": "Em",
+  "9B": "G",
+  "10A": "Bm",
+  "10B": "D",
+  "11A": "F#m",
+  "11B": "A",
+  "12A": "C#m",
+  "12B": "E",
+};
+
+function formatKey(key: string) {
+  const classicKey = classicKeysByCamelot[key];
+  return classicKey ? `${key} / ${classicKey}` : key;
+}
+
 function formatDelta(delta: number, suffix = "") {
   if (delta === 0) return `0${suffix}`;
   return `${delta > 0 ? "+" : ""}${delta}${suffix}`;
 }
 
 function trackCopyText(source: Track, match: TrackMatch) {
-  return `${source.artist} - ${source.title} (${source.key}, ${source.bpm} BPM) → ${match.track.artist} - ${match.track.title} (${match.track.key}, ${match.track.bpm} BPM)`;
+  return `${source.artist} - ${source.title} (${formatKey(source.key)}, ${source.bpm} BPM) → ${match.track.artist} - ${match.track.title} (${formatKey(match.track.key)}, ${match.track.bpm} BPM)`;
 }
 
 function EnergyMeter({ value }: { value: number }) {
@@ -102,7 +134,7 @@ function TrackRow({
         </span>
       </span>
       <span className="flex flex-col items-end gap-2">
-        <Badge variant={selected ? "perfect" : "default"}>{track.key}</Badge>
+        <Badge variant={selected ? "perfect" : "default"}>{formatKey(track.key)}</Badge>
         <span className="font-mono text-xs text-muted-foreground">{track.bpm} BPM</span>
       </span>
     </button>
@@ -150,7 +182,7 @@ function MatchRow({
             <KeyRound className="size-3.5" />
             Тональность
           </div>
-          <div className="mt-2 font-mono text-lg font-bold text-foreground">{match.track.key}</div>
+          <div className="mt-2 font-mono text-lg font-bold text-foreground">{formatKey(match.track.key)}</div>
         </div>
         <div className="rounded-md border border-white/8 bg-black/20 p-3">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
@@ -184,11 +216,12 @@ export function App() {
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
   const [matches, setMatches] = useState<TrackMatch[]>([]);
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
-  const [sessionState, setSessionState] = useState("Гостевой режим");
+  const [activeTab, setActiveTab] = useState<TrackMatch["type"]>("perfect");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const debouncedQuery = useDebouncedValue(query, 300);
 
   useEffect(() => {
@@ -196,12 +229,8 @@ export function App() {
 
     const initData = getInitData();
     if (initData) {
-      verifyTelegramSession(initData)
-        .then(() => setSessionState("Telegram проверен"))
-        .catch(() => setSessionState("Проверка Telegram не прошла"));
+      verifyTelegramSession(initData).catch(() => undefined);
     }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -209,26 +238,21 @@ export function App() {
 
     if (normalizedQuery.length < 2) {
       setTracks([]);
-      setMatches([]);
-      setSelectedTrack(null);
+      setMatchesLoading(false);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     setError("");
-    setMatches([]);
-    setSelectedTrack(null);
+    setMatchesLoading(false);
 
     getTracks(normalizedQuery)
       .then(({ tracks: loadedTracks }) => {
         setTracks(loadedTracks);
-        setSelectedTrack(loadedTracks[0] ?? null);
       })
       .catch((err: Error) => {
         setTracks([]);
-        setSelectedTrack(null);
-        setMatches([]);
         setError(err.message || "Не удалось загрузить треки");
       })
       .finally(() => setLoading(false));
@@ -242,7 +266,13 @@ export function App() {
 
     setMatchesLoading(true);
     getMatches(selectedTrack.id, debouncedQuery.trim())
-      .then(({ matches }) => setMatches(matches))
+      .then(({ matches }) => {
+        const nextPerfectMatches = matches.filter((match) => match.type === "perfect");
+        const nextCloseMatches = matches.filter((match) => match.type === "close");
+
+        setMatches(matches);
+        setActiveTab(nextPerfectMatches.length === 0 && nextCloseMatches.length > 0 ? "close" : "perfect");
+      })
       .catch((err: Error) => setError(err.message || "Не удалось найти сочетания"))
       .finally(() => setMatchesLoading(false));
   }, [selectedTrack, debouncedQuery]);
@@ -255,22 +285,40 @@ export function App() {
 
   const perfectMatches = matches.filter((match) => match.type === "perfect");
   const closeMatches = matches.filter((match) => match.type === "close");
+  const hasMatches = perfectMatches.length > 0 || closeMatches.length > 0;
+
+  useEffect(() => {
+    if (!selectedTrack || matchesLoading) return;
+    if (perfectMatches.length === 0 && closeMatches.length > 0) {
+      setActiveTab("close");
+    } else {
+      setActiveTab("perfect");
+    }
+  }, [selectedTrack, matchesLoading, perfectMatches.length, closeMatches.length]);
 
   function selectTrack(track: Track) {
     hapticTap();
     setSelectedTrack(track);
+    setMatches([]);
+    setMatchesLoading(true);
+    setDropdownOpen(false);
+  }
+
+  function updateQuery(value: string) {
+    setQuery(value);
+    setSelectedTrack(null);
+    setMatches([]);
+    setMatchesLoading(false);
+    setDropdownOpen(true);
+    setError("");
   }
 
   return (
-    <main className="noise-surface min-h-screen px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(18px+env(safe-area-inset-top))] text-foreground">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-        <header className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+    <main className="noise-surface min-h-screen px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(24px+env(safe-area-inset-top))] text-foreground">
+      <section className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+        <header className="space-y-5">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-              <Disc3 className="size-3.5 text-primary" />
-              {sessionState}
-            </div>
-            <h1 className="mt-4 font-display text-4xl font-bold leading-none tracking-normal text-foreground sm:text-5xl">
+            <h1 className="font-display text-4xl font-bold leading-none tracking-normal text-foreground sm:text-5xl">
               DJ Tool
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -278,20 +326,43 @@ export function App() {
             </p>
           </div>
 
-          {selectedTrack && (
-            <div className="flex gap-3 rounded-md border border-primary/20 bg-primary/10 p-4">
-              <CoverImage track={selectedTrack} />
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-primary">Исходный трек</div>
-                <div className="mt-2 max-w-[22rem] truncate text-lg font-extrabold">{selectedTrack.title}</div>
-                <div className="mt-1 truncate text-sm text-muted-foreground">{selectedTrack.artist}</div>
-                <div className="mt-3 flex gap-2">
-                  <Badge variant="perfect">{selectedTrack.key}</Badge>
-                  <Badge variant="default">{selectedTrack.bpm} BPM</Badge>
-                </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => updateQuery(event.target.value)}
+              onFocus={() => setDropdownOpen(true)}
+              placeholder="Введите название трека или артиста..."
+              className="h-12 pl-10"
+            />
+
+            {dropdownOpen && query.trim().length >= 2 && !selectedTrack && (
+              <div className="scrollbar-thin absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-80 overflow-auto rounded-md border border-white/10 bg-card p-2 shadow-glow">
+                {loading && (
+                  <div className="flex h-24 items-center justify-center text-sm font-semibold text-muted-foreground">
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Поиск треков
+                  </div>
+                )}
+
+                {!loading &&
+                  tracks.map((track) => (
+                    <TrackRow
+                      key={track.id}
+                      track={track}
+                      selected={false}
+                      onSelect={selectTrack}
+                    />
+                  ))}
+
+                {!loading && tracks.length === 0 && (
+                  <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-white/12 text-sm font-semibold text-muted-foreground">
+                    Треки не найдены
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </header>
 
         {error && (
@@ -300,94 +371,81 @@ export function App() {
           </div>
         )}
 
-        <div className="grid min-h-[34rem] gap-4 lg:grid-cols-[24rem_1fr]">
-          <aside className="rounded-md border border-white/10 bg-card/80 p-3 backdrop-blur">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Введите название трека или артиста..."
-                className="pl-10"
-              />
-            </div>
-
-            <div className="scrollbar-thin mt-3 flex max-h-[32rem] flex-col gap-2 overflow-auto pr-1">
-              {loading && (
-                <div className="flex h-40 items-center justify-center text-sm font-semibold text-muted-foreground">
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Загрузка треков
+        {selectedTrack && (
+          <section className="grid gap-4">
+            <div className="flex gap-3 rounded-md border border-primary/20 bg-primary/10 p-4">
+              <CoverImage track={selectedTrack} />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-primary">Исходный трек</div>
+                <div className="mt-2 truncate text-lg font-extrabold">{selectedTrack.title}</div>
+                <div className="mt-1 truncate text-sm text-muted-foreground">{selectedTrack.artist}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="perfect">{formatKey(selectedTrack.key)}</Badge>
+                  <Badge variant="default">{selectedTrack.bpm} BPM</Badge>
                 </div>
-              )}
-
-              {!loading &&
-                tracks.map((track) => (
-                  <TrackRow
-                    key={track.id}
-                    track={track}
-                    selected={selectedTrack?.id === track.id}
-                    onSelect={selectTrack}
-                  />
-                ))}
-
-              {!loading && debouncedQuery.trim().length < 2 && (
-                <div className="flex h-40 items-center justify-center rounded-md border border-dashed border-white/12 text-sm font-semibold text-muted-foreground">
-                  Введите минимум 2 символа
-                </div>
-              )}
-
-              {!loading && debouncedQuery.trim().length >= 2 && tracks.length === 0 && (
-                <div className="flex h-40 items-center justify-center rounded-md border border-dashed border-white/12 text-sm font-semibold text-muted-foreground">
-                  Треки не найдены
-                </div>
-              )}
-            </div>
-          </aside>
-
-          <section className="rounded-md border border-white/10 bg-card/80 p-3 backdrop-blur">
-            <Tabs defaultValue="perfect" className="h-full">
-              <div className="mb-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
-                  <Sparkles className="size-4 text-primary" />
-                  Найдено сочетаний: {matches.length}
-                </div>
-                <TabsList>
-                  <TabsTrigger value="perfect">Идеальные</TabsTrigger>
-                  <TabsTrigger value="close">Другие</TabsTrigger>
-                </TabsList>
               </div>
+            </div>
 
-              <TabsContent value="perfect" className="mt-0">
-                <MatchList
-                  source={selectedTrack}
-                  matches={perfectMatches}
-                  loading={matchesLoading}
-                  onCopied={() => setToast("Скопировано!")}
-                />
-              </TabsContent>
-              <TabsContent value="close" className="mt-0">
-                <MatchList
-                  source={selectedTrack}
-                  matches={closeMatches}
-                  loading={matchesLoading}
-                  onCopied={() => setToast("Скопировано!")}
-                />
-              </TabsContent>
-            </Tabs>
+            {matchesLoading && (
+              <div className="flex h-40 items-center justify-center rounded-md border border-white/10 bg-card/80 text-sm font-semibold text-muted-foreground">
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Поиск сочетаний
+              </div>
+            )}
+
+            {!matchesLoading && !hasMatches && (
+              <div className="rounded-md border border-white/10 bg-card/80 px-4 py-8 text-center text-sm font-semibold text-muted-foreground">
+                Для этого трека не найдено сочетаний. Попробуйте изменить BPM исходного трека
+              </div>
+            )}
+
+            {!matchesLoading && hasMatches && (
+              <section className="rounded-md border border-white/10 bg-card/80 p-3 backdrop-blur">
+                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TrackMatch["type"])}>
+                  <div className="mb-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
+                      <Sparkles className="size-4 text-primary" />
+                      Найдено сочетаний: {matches.length}
+                    </div>
+                    <TabsList>
+                      <TabsTrigger value="perfect">Идеальные</TabsTrigger>
+                      <TabsTrigger value="close">Другие</TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="perfect" className="mt-0">
+                    <MatchList
+                      source={selectedTrack}
+                      matches={perfectMatches}
+                      onCopied={() => setToast("Скопировано!")}
+                    />
+                  </TabsContent>
+                  <TabsContent value="close" className="mt-0">
+                    <MatchList
+                      source={selectedTrack}
+                      matches={closeMatches}
+                      onCopied={() => setToast("Скопировано!")}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </section>
+            )}
           </section>
-        </div>
+        )}
 
-        <footer className="rounded-md border border-white/10 bg-white/[0.035] px-4 py-3 text-center text-sm font-semibold text-muted-foreground">
-          База данных треков:{" "}
-          <a
-            href="https://getsongbpm.com"
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary underline underline-offset-4 transition-colors hover:text-emerald-200"
-          >
-            GetSongBPM
-          </a>
-        </footer>
+        {selectedTrack && (
+          <footer className="rounded-md border border-white/10 bg-white/[0.035] px-4 py-3 text-center text-sm font-semibold text-muted-foreground">
+            База данных треков:{" "}
+            <a
+              href="https://getsongbpm.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline underline-offset-4 transition-colors hover:text-emerald-200"
+            >
+              GetSongBPM
+            </a>
+          </footer>
+        )}
       </section>
 
       {toast && (
@@ -402,26 +460,15 @@ export function App() {
 function MatchList({
   source,
   matches,
-  loading,
   onCopied,
 }: {
   source: Track | null;
   matches: TrackMatch[];
-  loading: boolean;
   onCopied: () => void;
 }) {
-  if (loading) {
-    return (
-      <div className="flex h-[28rem] items-center justify-center text-sm font-semibold text-muted-foreground">
-        <Loader2 className="mr-2 size-4 animate-spin" />
-        Поиск сочетаний
-      </div>
-    );
-  }
-
   if (!source || matches.length === 0) {
     return (
-      <div className="flex h-[28rem] items-center justify-center rounded-md border border-dashed border-white/12 text-sm font-semibold text-muted-foreground">
+      <div className="flex h-40 items-center justify-center rounded-md border border-dashed border-white/12 text-sm font-semibold text-muted-foreground">
         Сочетаний не найдено
       </div>
     );
