@@ -19,7 +19,7 @@ const docsScript = `
 `;
 
 const trackResponse = {
-  results: [
+  tracks: [
     {
       id: 101,
       name: "Take It Off",
@@ -27,7 +27,10 @@ const trackResponse = {
       bpm: 126,
       key: { name: "A min" },
       genre: { name: "Tech House" },
-      image: { url: "https://geo-media.beatport.com/image.jpg" },
+      image: { dynamic_uri: "https://geo-media.beatport.com/image_size/{w}x{h}/wide.png" },
+      release: {
+        image: { dynamic_uri: "https://geo-media.beatport.com/image_size/{w}x{h}/square.jpg" },
+      },
     },
     {
       id: 102,
@@ -127,9 +130,10 @@ beforeEach(() => {
       });
     }
 
-    if (url.href.startsWith("https://api.beatport.com/v4/catalog/tracks/")) {
-      expect(url.searchParams.get("search")).toBe("Fisher");
-      expect(url.searchParams.get("page_size")).toBe("5");
+    if (url.href.startsWith("https://api.beatport.com/v4/catalog/search/")) {
+      expect(url.searchParams.get("q")).toBe("Fisher");
+      expect(url.searchParams.get("type")).toBe("tracks");
+      expect(url.searchParams.get("per_page")).toBe("5");
       expect(init?.headers).toMatchObject({
         Authorization: "Bearer ACCESS_TOKEN",
       });
@@ -157,7 +161,7 @@ describe("MusicApiService", () => {
       artist: "FISHER",
       bpm: 126,
       key: "8A",
-      cover_url: "https://geo-media.beatport.com/image.jpg",
+      cover_url: "https://geo-media.beatport.com/image_size/500x500/square.jpg",
     });
     expect(tracks[1]).toMatchObject({
       title: "Losing It",

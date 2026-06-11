@@ -16,4 +16,10 @@ describe("production bot startup", () => {
     expect(productionReturn).toBeGreaterThan(productionBlockStart);
     expect(localPollingStart).toBeGreaterThan(productionReturn);
   });
+
+  test("loads an expanded candidate library for matching results", async () => {
+    const source = await Bun.file(new URL("../src/index.ts", import.meta.url)).text();
+
+    expect(source).toContain("musicApi.searchTracks(query, 50)");
+  });
 });

@@ -17,6 +17,8 @@ type BeatportImage = {
   id?: number | string;
   uri?: string;
   url?: string;
+  dynamic_uri?: string;
+  dynamicUrl?: string;
 };
 
 type BeatportNameObject = {
@@ -162,17 +164,18 @@ function getNumber(value: unknown): number | undefined {
 
 function absoluteBeatportUrl(value: string | undefined) {
   if (!value) return null;
-  if (value.startsWith("http")) return value;
-  if (value.startsWith("//")) return `https:${value}`;
-  if (value.startsWith("/")) return `https://www.beatport.com${value}`;
-  return value;
+  const sizedValue = value.replace("{w}x{h}", "500x500");
+  if (sizedValue.startsWith("http")) return sizedValue;
+  if (sizedValue.startsWith("//")) return `https:${sizedValue}`;
+  if (sizedValue.startsWith("/")) return `https://www.beatport.com${sizedValue}`;
+  return sizedValue;
 }
 
 function pickImageValue(value: unknown) {
   if (typeof value === "string") return absoluteBeatportUrl(value);
   if (value && typeof value === "object") {
     const image = value as BeatportImage;
-    return absoluteBeatportUrl(getString(image.uri) ?? getString(image.url));
+    return absoluteBeatportUrl(getString(image.dynamic_uri) ?? getString(image.dynamicUrl) ?? getString(image.uri) ?? getString(image.url));
   }
 
   return null;
@@ -180,12 +183,12 @@ function pickImageValue(value: unknown) {
 
 function pickImage(track: BeatportTrack) {
   const images = [
-    track.image,
-    track.artwork,
-    track.images?.[0],
     track.release?.image,
     track.release?.artwork,
     track.release?.images?.[0],
+    track.image,
+    track.artwork,
+    track.images?.[0],
   ];
 
   for (const image of images) {
@@ -276,9 +279,10 @@ export class MusicApiService {
     if (cachedTracks) return cachedTracks;
 
     const token = await this.getAccessToken();
-    const url = new URL(`${BEATPORT_API_BASE_URL}/catalog/tracks/`);
-    url.searchParams.set("search", normalizedQuery);
-    url.searchParams.set("page_size", String(limit));
+    const url = new URL(`${BEATPORT_API_BASE_URL}/catalog/search/`);
+    url.searchParams.set("q", normalizedQuery);
+    url.searchParams.set("type", "tracks");
+    url.searchParams.set("per_page", String(limit));
 
     const response = await fetch(url, {
       headers: {

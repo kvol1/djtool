@@ -80,7 +80,7 @@ app.get("/api/tracks", async (c) => {
 
 app.get("/api/matches/:id", async (c) => {
   const query = c.req.query("query") ?? "";
-  const tracks = await musicApi.searchTracks(query);
+  const tracks = await musicApi.searchTracks(query, 50);
   const sourceTrack = tracks.find((track) => track.id === c.req.param("id")) ?? (await musicApi.getTrackById(c.req.param("id")));
 
   if (!sourceTrack) {

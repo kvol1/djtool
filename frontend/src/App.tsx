@@ -246,16 +246,25 @@ export function App() {
     setLoading(true);
     setError("");
     setMatchesLoading(false);
+    let cancelled = false;
 
     getTracks(normalizedQuery)
       .then(({ tracks: loadedTracks }) => {
+        if (cancelled) return;
         setTracks(loadedTracks);
       })
       .catch((err: Error) => {
+        if (cancelled) return;
         setTracks([]);
         setError(err.message || "Не удалось загрузить треки");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedQuery]);
 
   useEffect(() => {
@@ -265,16 +274,26 @@ export function App() {
     }
 
     setMatchesLoading(true);
+    let cancelled = false;
     getMatches(selectedTrack.id, debouncedQuery.trim())
       .then(({ matches }) => {
+        if (cancelled) return;
         const nextPerfectMatches = matches.filter((match) => match.type === "perfect");
         const nextCloseMatches = matches.filter((match) => match.type === "close");
 
         setMatches(matches);
         setActiveTab(nextPerfectMatches.length === 0 && nextCloseMatches.length > 0 ? "close" : "perfect");
       })
-      .catch((err: Error) => setError(err.message || "Не удалось найти сочетания"))
-      .finally(() => setMatchesLoading(false));
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message || "Не удалось найти сочетания");
+      })
+      .finally(() => {
+        if (!cancelled) setMatchesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedTrack, debouncedQuery]);
 
   useEffect(() => {
