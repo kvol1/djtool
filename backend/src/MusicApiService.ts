@@ -313,11 +313,14 @@ export class MusicApiService {
       return this.accessToken;
     }
 
-    if (!this.clientId || !this.clientSecret) {
-      throw new MusicApiError("Beatport API не настроен: добавьте BEATPORT_CLIENT_ID и BEATPORT_CLIENT_SECRET", 503);
+    if (!this.clientId || !this.clientSecret || !this.username || !this.password) {
+      throw new MusicApiError(
+        "Beatport API не настроен: добавьте BEATPORT_CLIENT_ID, BEATPORT_CLIENT_SECRET, BEATPORT_USERNAME и BEATPORT_PASSWORD",
+        503,
+      );
     }
 
-    const body = this.username && this.password ? this.buildPasswordGrantBody() : this.buildClientCredentialsBody();
+    const body = this.buildPasswordGrantBody();
 
     const response = await fetch(TOKEN_URL, {
       method: "POST",
@@ -337,14 +340,6 @@ export class MusicApiService {
     this.accessToken = data.access_token;
     this.tokenExpiresAt = Date.now() + Math.max(60, (data.expires_in ?? 3600) - 60) * 1000;
     return this.accessToken;
-  }
-
-  private buildClientCredentialsBody() {
-    return new URLSearchParams({
-      client_id: this.clientId ?? "",
-      client_secret: this.clientSecret ?? "",
-      grant_type: "client_credentials",
-    });
   }
 
   private buildPasswordGrantBody() {
