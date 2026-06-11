@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { Bot } from "grammy";
+import { Bot, webhookCallback } from "grammy";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -8,10 +8,12 @@ import { findHarmonicMatches } from "./matchingEngine";
 import { MusicApiError, MusicApiService } from "./MusicApiService";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const PUBLIC_WEBAPP_URL = process.env.PUBLIC_WEBAPP_URL ?? process.env.RENDER_EXTERNAL_URL;
+const PUBLIC_WEBAPP_URL = process.env.PUBLIC_WEBAPP_URL ?? process.env.RENDER_EXTERNAL_URL ?? "";
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN ?? PUBLIC_WEBAPP_URL;
 const BACKEND_PORT = Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 8787);
 const STATIC_ROOT = new URL("../../frontend/dist/", import.meta.url);
+const WEBHOOK_PATH = "/api/telegram/webhook";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -37,6 +39,7 @@ if (!PUBLIC_WEBAPP_URL) {
 const bot = new Bot(BOT_TOKEN);
 const app = new Hono();
 const musicApi = new MusicApiService();
+const webhookUrl = new URL(WEBHOOK_PATH, PUBLIC_WEBAPP_URL).toString();
 
 app.use(
   "*",
@@ -65,6 +68,8 @@ app.post("/api/auth", async (c) => {
 
   return c.json({ ok: true });
 });
+
+app.post(WEBHOOK_PATH, webhookCallback(bot, "hono"));
 
 app.get("/api/tracks", async (c) => {
   const query = c.req.query("query") ?? "";
@@ -130,19 +135,35 @@ bot.catch((err) => {
   console.error("Ошибка бота:", err.error);
 });
 
-await bot.api.setChatMenuButton({
-  menu_button: {
-    type: "web_app",
-    text: "DJ Tool",
-    web_app: { url: PUBLIC_WEBAPP_URL },
-  },
-});
+async function configureBot() {
+  await bot.api.setChatMenuButton({
+    menu_button: {
+      type: "web_app",
+      text: "DJ Tool",
+      web_app: { url: PUBLIC_WEBAPP_URL },
+    },
+  });
 
-void bot.start({
-  onStart: (info) => {
-    console.log(`Бот запущен: @${info.username}`);
-  },
-});
+  if (IS_PRODUCTION) {
+    await bot.api.setWebhook(webhookUrl, {
+      allowed_updates: ["message"],
+    });
+
+    const info = await bot.api.getMe();
+    console.log(`Бот запущен через webhook: @${info.username}`);
+    console.log(`Webhook Telegram: ${webhookUrl}`);
+    return;
+  }
+
+  await bot.api.deleteWebhook();
+  void bot.start({
+    onStart: (info) => {
+      console.log(`Бот запущен локально: @${info.username}`);
+    },
+  });
+}
+
+await configureBot();
 
 serve({
   fetch: app.fetch,
